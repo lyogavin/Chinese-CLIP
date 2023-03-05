@@ -4,6 +4,12 @@ import logging
 from pathlib import Path
 import json
 from PIL import Image
+from PIL import Image, ImageOps
+from io import BytesIO
+
+import requests
+from transformers import BertTokenizer
+import pandas as pd
 import base64
 from io import BytesIO
 from dataclasses import dataclass
@@ -16,6 +22,9 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data import Dataset, DataLoader
+from torchvision.transforms import Normalize, Compose, RandomResizedCrop, InterpolationMode, ToTensor, Resize, \
+    CenterCrop
 
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize, InterpolationMode
 from timm.data import create_transform
@@ -34,7 +43,110 @@ def _preprocess_text(text):
     return text
 
 
+def _convert_to_rgb(image):
+    return image.convert('RGB')
+
+
+def image_transform(
+        image_size=224,
+        is_train=True,
+        mean=(0.48145466, 0.4578275, 0.40821073),
+        std=(0.26862954, 0.26130258, 0.27577711)
+):
+    normalize = Normalize(mean=mean, std=std)
+    if is_train:
+        return Compose([
+            Resize(image_size, interpolation=InterpolationMode.BICUBIC),
+            _convert_to_rgb,
+            ToTensor(),
+            normalize,
+        ])
+    else:
+        return Compose([
+            Resize(image_size, interpolation=InterpolationMode.BICUBIC),
+            #CenterCrop(image_size),
+            _convert_to_rgb,
+            ToTensor(),
+            normalize,
+        ])
+
+
 class LMDBDataset(Dataset):
+    def __init__(self, df_path, split='val',
+                 transform=None, padding_to_square=False, return_pil_img=False):
+
+        self.padding_to_square = padding_to_square
+        self.return_pil_img = return_pil_img
+        #self.root = img_root_path
+
+        self.raw_df = pd.read_csv(df_path)
+
+        # split
+        TRAIN_RATIO = 0.95 #0.8
+        train_ticket_ids = pd.Series(pd.unique(self.raw_df.index)).sample(frac=TRAIN_RATIO)
+
+        if not split == 'val':
+            self.df = self.raw_df[self.raw_df.index.isin(train_ticket_ids)].reset_index()
+        else:
+            self.df = self.raw_df[~self.raw_df.index.isin(train_ticket_ids)].reset_index()
+
+
+        self.images = self.df.album_path.tolist()
+        self.image_urls = self.df['笔记封面'].apply(lambda x: "https:" + x if not x.startswith("http") else x)
+        self.labels = self.df.text.tolist()
+
+        self.transforms = transform
+        self.tokenizer = BertTokenizer.from_pretrained("hfl/chinese-roberta-wwm-ext")
+
+        # NOTE large 模型
+        self.context_length = 77
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        img_path = str(self.images[idx])
+        try:
+            pil_img = Image.open(img_path)
+            if self.padding_to_square:
+                max_size = max(pil_img.size[0], pil_img.size[1])
+                delta_width = max_size - pil_img.size[0]
+                delta_height = max_size - pil_img.size[1]
+                pad_width = delta_width // 2
+                pad_height = delta_height // 2
+                padding = (pad_width, pad_height, delta_width - pad_width, delta_height - pad_height)
+                pil_img = ImageOps.expand(pil_img, padding)
+
+            image = self.transforms(pil_img)
+        except Exception as ex:
+            print(f"Error opening image:{img_path}, use default one...")
+            url = str(self.image_urls[idx])
+            response = requests.get(url)
+            pil_img = Image.open(BytesIO(response.content))
+
+            if self.padding_to_square:
+                max_size = max(pil_img.size[0], pil_img.size[1])
+                delta_width = max_size - pil_img.size[0]
+                delta_height = max_size - pil_img.size[1]
+                pad_width = delta_width // 2
+                pad_height = delta_height // 2
+                padding = (pad_width, pad_height, delta_width - pad_width, delta_height - pad_height)
+                pil_img = ImageOps.expand(pil_img, padding)
+
+            image = self.transforms(pil_img)
+
+        text = self.tokenizer(str(self.labels[idx]), max_length=self.context_length,
+                              padding='max_length', truncation=True, return_tensors='pt')['input_ids'][0]
+        label = self.labels[idx]
+
+        if not self.return_pil_img:
+            return image, text, label
+        else:
+            return image, text, label, pil_img
+
+
+
+class LMDBDatasetOriginal(Dataset):
     def __init__(self, lmdb_path, split="val", max_txt_length=64, use_augment=False, resolution=224):
         self.lmdb_path = lmdb_path
 
