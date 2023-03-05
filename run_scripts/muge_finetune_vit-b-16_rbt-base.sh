@@ -8,7 +8,7 @@
 # Command: bash run_scripts/muge_finetune_vit-b-16_rbt-base.sh ${DATAPATH}
 
 # Number of GPUs per GPU worker
-GPUS_PER_NODE=8 
+GPUS_PER_NODE=1
 # Number of GPU workers, for single-worker training, please set to 1
 WORKER_CNT=1
 # The ip address of the rank-0 worker, for single-worker training, please set to localhost
@@ -23,18 +23,19 @@ export PYTHONPATH=${PYTHONPATH}:`pwd`/cn_clip/
 DATAPATH=${1}
 
 # data options
-train_data=${DATAPATH}/datasets/MUGE/lmdb/train
-val_data=${DATAPATH}/datasets/MUGE/lmdb/valid # if val_data is not specified, the validation will be automatically disabled
+train_data=/home/ubuntu/cloudfs/ghost_data/newrank_hotrank_download/album_download/chinese_clip_training_til0123/chinese_clip_training_til0123_test_sample_1678055262.csv.tgz
+val_data=/home/ubuntu/cloudfs/ghost_data/newrank_hotrank_download/album_download/chinese_clip_training_til0123/chinese_clip_training_til0123_test_sample_1678055262.csv.tgz # if val_data is not specified, the validation will be automatically disabled
 
 # restore options
-resume=${DATAPATH}/pretrained_weights/clip_cn_vit-b-16.pt # or specify your customed ckpt path to resume
+resume=/home/ubuntu/cloudfs/saved_models/Chinese_CLIP/ViT-H14/clip_cn_vit-h-14.pt # or specify your customed ckpt path to resume
+
 reset_data_offset="--reset-data-offset"
 reset_optimizer="--reset-optimizer"
 # reset_optimizer=""
 
 # output options
-output_base_dir=${DATAPATH}/experiments/
-name=muge_finetune_vit-b-16_roberta-base_bs128_8gpu
+output_base_dir=/home/ubuntu/cloudfs/saved_models/Chinese_CLIP/experiments/
+name=muge_finetune_vit-h-14_roberta-base_bs128_1gpu
 save_step_frequency=999999 # disable it
 save_epoch_frequency=1
 log_interval=1
