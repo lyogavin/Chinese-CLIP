@@ -12,7 +12,7 @@ GPUS_PER_NODE=1
 # Number of GPU workers, for single-worker training, please set to 1
 WORKER_CNT=1
 # The ip address of the rank-0 worker, for single-worker training, please set to localhost
-export MASTER_ADDR=XX.XX.XX.XX
+export MASTER_ADDR=127.0.0.1
 # The port for communication
 export MASTER_PORT=8514
 # The rank of this worker, should be in {0, ..., WORKER_CNT-1}, for single-worker training, please set to 0
@@ -57,9 +57,9 @@ text_model=RoBERTa-wwm-ext-base-chinese
 use_augment="--use-augment"
 # use_augment=""
 
-#python3 -m torch.distributed.launch --nproc_per_node=${GPUS_PER_NODE} --nnodes=${WORKER_CNT} --node_rank=${RANK} \
-#          --master_addr=${MASTER_ADDR} --master_port=${MASTER_PORT}
-python3 cn_clip/training/main.py \
+python3 -m torch.distributed.launch --nproc_per_node=${GPUS_PER_NODE} --nnodes=${WORKER_CNT} --node_rank=${RANK} \
+          --master_addr=${MASTER_ADDR} --master_port=${MASTER_PORT}
+#python3 cn_clip/training/main.py \
           --train-data=${train_data} \
           --val-data=${val_data} \
           --resume=${resume} \
